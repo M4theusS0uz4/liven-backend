@@ -1,0 +1,14 @@
+﻿fastapi
+uvicorn[standard]
+pydantic[email]
+sqlalchemy>=2.0
+alembic>=1.13
+psycopg[binary]>=3.1
+python-dotenv
+opencv-python-headless
+deepface
+numpy
+tensorflow
+tf-keras
+python-multipart
+pyjwt
