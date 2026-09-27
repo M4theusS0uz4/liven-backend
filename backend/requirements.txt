@@ -12,3 +12,5 @@ tensorflow
 tf-keras
 python-multipart
 pyjwt
+pytest
+httpx

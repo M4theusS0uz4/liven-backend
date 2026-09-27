@@ -2,7 +2,35 @@
 from alembic import context
 from config.config import env
 from config.database import Base
-from models.orm import Acesso, Entrega, Morador, Unidade  # noqa: F401
+from models.orm import (  # noqa: F401
+    Acesso,
+    AutorizacaoAcesso,
+    Auditoria,
+    Comunicado,
+    ComunicadoLeitura,
+    Condominio,
+    Entrega,
+    Mapa,
+    MapaAreaComum,
+    MapaBloco,
+    MapaPortaria,
+    MapaRua,
+    MapaRuaPonto,
+    MapaUnidade,
+    Morador,
+    Ocorrencia,
+    OcorrenciaComentario,
+    OcorrenciaHistorico,
+    OtpChallenge,
+    Porteiro,
+    QrCode,
+    RegistroFacial,
+    RefreshToken,
+    Unidade,
+    Usuario,
+    Veiculo,
+    Visitante,
+)
 
 config = context.config
 config.set_main_option("sqlalchemy.url", env["DATABASE_URL"])
