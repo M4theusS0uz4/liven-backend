@@ -122,6 +122,9 @@ class Auditoria(Base):
     recurso_id: Mapped[int | None] = mapped_column(Integer)
     endereco_ip: Mapped[str | None] = mapped_column(String(64))
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    detalhes: Mapped[str | None] = mapped_column(Text)
+    hash_anterior: Mapped[str | None] = mapped_column(String(64))
+    hash_atual: Mapped[str | None] = mapped_column(String(64))
 
 
 class Unidade(Base):

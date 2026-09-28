@@ -22,6 +22,7 @@ from routers.ocorrencias import router as ocorrencias_router
 from routers.dashboard import router as dashboard_router
 from routers.facial import router as facial_router
 from routers.veiculos import router as veiculos_router
+from routers.auditoria import router as auditoria_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s")
 logger = logging.getLogger(__name__)
@@ -100,7 +101,7 @@ app.include_router(ocorrencias_router)
 app.include_router(dashboard_router)
 app.include_router(facial_router)
 app.include_router(veiculos_router)
-
+app.include_router(auditoria_router)
 
 @app.get("/api/v1/health", tags=["Status"])
 async def health():
