@@ -1,2 +1,3 @@
 # Configuração local do Docker Compose; use .env.example como modelo.
 .env
+docs
