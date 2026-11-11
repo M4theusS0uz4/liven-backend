@@ -70,6 +70,26 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     logger.info("Requisição inválida em %s", request.url.path)
+    if request.url.path in {
+        "/api/v1/auth/register/request-otp",
+        "/api/v1/auth/password/setup/request-otp",
+    }:
+        # Report only field names and constraint categories. Never echo submitted values,
+        # especially passwords, from Pydantic's validation errors.
+        errors = exc.errors()
+        fields = {str(error.get("loc", ("",))[-1]) for error in errors if error.get("loc")}
+        kinds = {str(error.get("type", "")) for error in errors}
+        if "email" in fields and kinds.intersection({"value_error", "string_pattern_mismatch", "email_parsing", "value_error.email"}):
+            message = "Informe um endereço de e-mail válido."
+        elif "senha" in fields and "string_too_short" in kinds:
+            message = "A senha precisa ter pelo menos 8 caracteres."
+        elif "senha" in fields and "string_too_long" in kinds:
+            message = "A senha pode ter no máximo 128 caracteres."
+        elif fields.intersection({"email", "senha"}):
+            message = "Confira o formato do e-mail e da senha e tente novamente."
+        else:
+            message = "Atualize a página e confira os campos do cadastro."
+        return JSONResponse(status_code=422, content={"detail": message})
     return JSONResponse(status_code=422, content={"detail": "Os dados enviados são inválidos."})
 
 

@@ -59,6 +59,27 @@ services:
         condition: service_healthy
     networks:
       - liven_network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ../liven-frontend/frontend
+      dockerfile: Dockerfile
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8000
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - liven_network
 
 volumes:
   liven_postgres_data:
