@@ -12,7 +12,7 @@ class Base(DeclarativeBase):
 
 database_url = env["DATABASE_URL"]
 connect_args = {"connect_timeout": 5} if database_url.startswith("postgresql") else {}
-engine = create_engine(database_url, connect_args=connect_args, pool_pre_ping=True)
+engine = create_engine(database_url, connect_args=connect_args, pool_pre_ping=True, hide_parameters=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 

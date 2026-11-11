@@ -1,4 +1,4 @@
-﻿# Liven — Arquitetura Local
+# Liven — Arquitetura Local
 
 Sistema web local para controle de acesso condominial e automação residencial.
 
@@ -37,7 +37,7 @@ docker compose up -d postgres
 pip install -r backend\requirements.txt
 Set-Location backend
 alembic upgrade head
-python seed.py
+python seed.py # simulação; --apply somente após aprovação
 Set-Location ..
 
 # Inicie a API pela raiz do repositório
@@ -52,19 +52,21 @@ npm run dev
 O entrypoint da raiz encaminha para `backend.main`; também é possível executar
 diretamente com `Set-Location backend; python -m uvicorn main:app --reload --port 8000`.
 
-## Login de demonstração
+## Autenticação OTP
 
-```powershell
-$login = Invoke-RestMethod http://localhost:8000/api/v1/auth/login -Method Post -ContentType 'application/json' -Body '{"telefone":"11999999999","perfil":"portaria","codigo":"123456"}'
-$token = $login.access_token
-Invoke-RestMethod http://localhost:8000/api/v1/unidades -Headers @{Authorization="Bearer $token"}
-```
+O fluxo oficial usa `POST /api/v1/auth/request-otp`, seguido de
+`POST /api/v1/auth/verify-otp`. O login fixo foi desativado (`/auth/login` retorna 410),
+e headers de perfil não autenticam usuários. O perfil vem do cadastro no banco.
 
-Os perfis são `morador`, `portaria` e `sindico`. Portaria e síndico acessam
-módulos administrativos; morador fica limitado aos próprios recursos. Durante
-o desenvolvimento, `X-User-Profile` e `X-User-Phone` continuam aceitos como
-compatibilidade temporária. O código `123456` é exclusivo da apresentação e
-deve ser removido antes de qualquer ambiente real.
+Em `APP_ENV=development` com `MOCK_OTP=true`, a solicitação por e-mail devolve `codigo_mock`
+para uma conta ativa previamente cadastrada. Use esse código temporário na verificação.
+O Resend pode ser configurado para entrega real por e-mail.
+A migration `20261110_0008` está pendente; não foi aplicada automaticamente.
+Frontend e backend usam `{email, condominio_id}`; telefone permanece somente como contato.
+
+Consulte [contratos, contexto de condomínio, seed seguro e testes](backend/docs/OTP.md).
+O seed apenas simula por padrão; `python seed.py --condominio-id <ID> --apply`
+cria dados demonstrativos somente após aprovação do responsável.
 
 API de teste: `GET http://localhost:8000/api/v1/health`.
 
@@ -120,3 +122,10 @@ A API ficará disponível em `http://localhost:8000`, compatível com a origem
 local padrão configurada em CORS. O volume nomeado `liven_postgres_data`
 preserva os dados após `docker compose down`; use `docker compose down -v`
 somente quando desejar removê-los.
+
+## Cadastro e login globais
+
+Cadastro com e-mail, senha e confirmação OTP; login normal por e-mail e senha.
+Sem dados fictícios ou vínculo automático de condomínio. Veja [contratos, migration e transição de contas antigas](backend/docs/PASSWORD_AUTH.md).
+O login recupera perfis já autorizados e mantém a seleção explícita quando há vários
+condomínios. Veja [integração com usuários e permissões](backend/docs/AUTHORIZATION.md).

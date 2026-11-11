@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from config.config import env
 from config.database import get_db
-from models.orm import Condominio, PerfilUsuario, Usuario
+from models.orm import ContaGlobal, PerfilUsuario, RefreshToken, SessaoGlobal, Usuario
 
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -29,7 +29,11 @@ def as_utc(value: datetime) -> datetime:
 
 
 def normalize_phone(value: str) -> str:
+    if not re.fullmatch(r"\+?[\d\s().-]+", value.strip()):
+        raise ValueError("Telefone inválido.")
     phone = re.sub(r"\D", "", value)
+    if len(phone) in (10, 11):
+        phone = "55" + phone
     if not 8 <= len(phone) <= 15:
         raise ValueError("Telefone inválido.")
     return phone
@@ -54,7 +58,7 @@ def hash_token(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-def create_access_token(user: Usuario) -> str:
+def create_access_token(user: Usuario, session_id: int | None = None) -> str:
     now = utcnow()
     payload = {
         "sub": str(user.id),
@@ -64,6 +68,8 @@ def create_access_token(user: Usuario) -> str:
         "exp": now + timedelta(minutes=env["ACCESS_TOKEN_MINUTES"]),
         "jti": secrets.token_urlsafe(16),
     }
+    if session_id is not None:
+        payload["sid"] = session_id
     return jwt.encode(payload, env["JWT_SECRET"], algorithm="HS256")
 
 
@@ -92,59 +98,64 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def load_global_state(payload: dict, db: Session) -> tuple[ContaGlobal, SessaoGlobal]:
+    error = HTTPException(401, "Sessão inválida ou expirada.")
+    if not {"sub", "exp", "iat", "scope", "token_type", "sid"}.issubset(payload):
+        raise error
+    subject, sid = payload["sub"], payload["sid"]
+    if not isinstance(subject, str) or not subject.startswith("global:") or payload["token_type"] != "access" or payload["scope"] not in ("global", "condominio"):
+        raise error
+    try:
+        account_id = int(subject.removeprefix("global:"))
+    except ValueError:
+        raise error from None
+    if not isinstance(sid, int) or isinstance(sid, bool):
+        raise error
+    account, session = db.get(ContaGlobal, account_id), db.get(SessaoGlobal, sid)
+    if account is None or not account.ativo or account.email_verificado_em is None:
+        raise error
+    if session is None or session.conta_id != account.id or session.revoked_at is not None or as_utc(session.expires_at) <= utcnow():
+        raise error
+    if (payload["scope"] == "global") != (session.usuario_id is None):
+        raise error
+    return account, session
+
+
 def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> Usuario:
     if credentials is None:
-        if env["APP_ENV"] == "development" and env.get("MOCK_OTP", False):
-            return get_demo_header_user(request, db)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Autenticação necessária.")
     if credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido ou expirado.")
     try:
         payload = jwt.decode(credentials.credentials, env["JWT_SECRET"], algorithms=["HS256"])
+        if str(payload.get("sub", "")).startswith("global:") or payload.get("scope") in ("global", "condominio"):
+            account, session = load_global_state(payload, db)
+            if payload["scope"] != "condominio":
+                raise HTTPException(401, "Contexto de condomínio necessário.")
+            user = db.get(Usuario, session.usuario_id)
+            from services.memberships import valid_membership
+            if not valid_membership(user, account.email) or user.id != payload.get("usuario_id") or user.condominio_id != payload.get("condominio_id") or user.perfil != payload.get("perfil"):
+                raise HTTPException(401, "Vínculo inválido ou revogado.")
+            return user
         user_id = int(payload["sub"])
     except (jwt.InvalidTokenError, KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido ou expirado.") from exc
     user = db.get(Usuario, user_id)
-    if user is None or not user.ativo or user.condominio_id != payload.get("condominio_id"):
+    if user is None or not user.ativo or not user.condominio.ativo or user.condominio_id != payload.get("condominio_id"):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido ou expirado.")
+    if "sid" in payload:
+        sid = payload["sid"]
+        session = db.get(RefreshToken, sid) if isinstance(sid, int) and not isinstance(sid, bool) else None
+        if session is None or session.usuario_id != user.id or session.revoked_at is not None or as_utc(session.expires_at) <= utcnow():
+            raise HTTPException(401, "Token inválido ou expirado.")
+    elif not env["LEGACY_OTP_LOGIN_ENABLED"]:
+        # Tokens antigos sem sessão rastreável só existem no modo de transição explícito.
+        raise HTTPException(401, "Token inválido ou expirado.")
     return user
-
-
-def get_demo_header_user(request: Request, db: Session) -> Usuario:
-    profile_value = request.headers.get("X-User-Profile")
-    phone_value = request.headers.get("X-User-Phone")
-    if profile_value not in {profile.value for profile in PerfilUsuario} or not phone_value:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Autenticação necessária.")
-    try:
-        phone = normalize_phone(phone_value)
-        profile = PerfilUsuario(profile_value)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credencial inválida.") from exc
-    user = db.scalar(select(Usuario).where(Usuario.telefone == phone).order_by(Usuario.id))
-    if user is None:
-        condominio = db.scalar(select(Condominio).order_by(Condominio.id))
-        if condominio is None:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Serviço indisponível.")
-        user = Usuario(condominio_id=condominio.id, telefone=phone, nome=demo_profile_name(profile), perfil=profile)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-    elif user.perfil != profile:
-        user.perfil = profile
-        db.commit()
-    return user
-
-
-def demo_profile_name(profile: PerfilUsuario) -> str:
-    return {
-        PerfilUsuario.MORADOR: "Morador da apresentação",
-        PerfilUsuario.PORTARIA: "Equipe da portaria",
-        PerfilUsuario.SINDICO: "Síndico da apresentação",
-    }[profile]
 
 
 def require_profiles(*profiles: PerfilUsuario):

@@ -1,7 +1,7 @@
-﻿import enum
+import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from config.database import Base
@@ -72,11 +72,16 @@ class Condominio(Base):
 
 class Usuario(Base):
     __tablename__ = "usuarios"
-    __table_args__ = (UniqueConstraint("condominio_id", "telefone", name="uq_usuarios_condominio_telefone"),)
+    __table_args__ = (
+        UniqueConstraint("condominio_id", "telefone", name="uq_usuarios_condominio_telefone"),
+        UniqueConstraint("condominio_id", "email", name="uq_usuarios_condominio_email"),
+        CheckConstraint("email IS NULL OR email = lower(trim(email))", name="ck_usuarios_email_normalizado"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     condominio_id: Mapped[int] = mapped_column(ForeignKey("condominios.id", ondelete="CASCADE"), index=True)
     telefone: Mapped[str] = mapped_column(String(25))
+    email: Mapped[str | None] = mapped_column(String(255))
     nome: Mapped[str] = mapped_column(String(150))
     perfil: Mapped[PerfilUsuario] = mapped_column(String(20), default=PerfilUsuario.MORADOR)
     ativo: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
@@ -90,7 +95,10 @@ class OtpChallenge(Base):
     __tablename__ = "otp_challenges"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    telefone: Mapped[str] = mapped_column(String(25), index=True)
+    # Nullable apenas para preservar desafios legados, que não são mais aceitos.
+    usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="CASCADE"), index=True)
+    telefone: Mapped[str | None] = mapped_column(String(25), index=True)
+    email: Mapped[str | None] = mapped_column(String(255))
     code_hash: Mapped[str] = mapped_column(String(128))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
@@ -445,3 +453,64 @@ class MapaPortaria(Base):
     x: Mapped[float] = mapped_column(Float)
     y: Mapped[float] = mapped_column(Float)
     mapa: Mapped[Mapa] = relationship(back_populates="portarias")
+
+
+class ContaGlobal(Base):
+    """Identidade verificada, sem perfil nem associação automática a condomínio."""
+    __tablename__ = "contas_globais"
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_contas_globais_email"),
+        CheckConstraint("email = lower(trim(email))", name="ck_contas_globais_email_normalizado"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255))
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+    ativo: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    email_verificado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class _GlobalOtpFields:
+    # Uma linha por e-mail serializa primeira emissão e verificações concorrentes.
+    email: Mapped[str] = mapped_column(String(255), primary_key=True)
+    code_hash: Mapped[str | None] = mapped_column(String(128))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    requests: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OtpCadastro(_GlobalOtpFields, Base):
+    __tablename__ = "otp_cadastro"
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+
+
+class OtpDefinicaoSenha(_GlobalOtpFields, Base):
+    __tablename__ = "otp_definicao_senha"
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+
+
+class LimiteLogin(Base):
+    __tablename__ = "limites_login"
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OtpLoginGlobal(_GlobalOtpFields, Base):
+    __tablename__ = "otp_login_global"
+
+
+class SessaoGlobal(Base):
+    __tablename__ = "sessoes_globais"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conta_id: Mapped[int] = mapped_column(ForeignKey("contas_globais.id", ondelete="CASCADE"), index=True)
+    usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

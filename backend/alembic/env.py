@@ -1,4 +1,4 @@
-﻿from logging.config import fileConfig
+from logging.config import fileConfig
 from alembic import context
 from config.config import env
 from config.database import Base
@@ -9,6 +9,12 @@ from models.orm import (  # noqa: F401
     Comunicado,
     ComunicadoLeitura,
     Condominio,
+    ContaGlobal,
+    OtpCadastro,
+    OtpDefinicaoSenha,
+    LimiteLogin,
+    OtpLoginGlobal,
+    SessaoGlobal,
     Entrega,
     Mapa,
     MapaAreaComum,

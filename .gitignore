@@ -1,3 +1,22 @@
 # Configuração local do Docker Compose; use .env.example como modelo.
 .env
 docs
+
+# Credenciais e configurações locais
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Bancos de dados locais
+*.db
+*.sqlite
+*.sqlite3
+
+# Configurações locais
+.vscode/

@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -15,6 +15,7 @@ from routers.entregas import router as entregas_router
 from routers.mapa import router as mapa_router
 from routers.unidades import router as unidades_router
 from routers.auth import me_router, router as auth_router
+from routers.registration import router as registration_router
 from routers.acessos import router as acessos_router
 from routers.porteiros import router as porteiros_router
 from routers.comunicados import router as comunicados_router
@@ -58,7 +59,11 @@ app = FastAPI(
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error("Erro não tratado em %s: %s", request.url.path, exc, exc_info=True)
+    if request.url.path.startswith("/api/v1/auth/"):
+        # Exceções SQL podem conter parâmetros com hashes/tokens: nunca registrar aqui.
+        logger.error("Erro de autenticação em %s (%s)", request.url.path, type(exc).__name__)
+    else:
+        logger.error("Erro não tratado em %s: %s", request.url.path, exc, exc_info=True)
     return JSONResponse(status_code=500, content={"detail": "Ocorreu um erro interno no servidor."})
 
 
@@ -86,13 +91,15 @@ app.add_middleware(
     allow_origins=env["CORS_ORIGINS"],
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Accept", "Authorization", "Content-Type"],
+    # Headers legados são ignorados na autenticação; permitidos apenas no transporte.
+    allow_headers=["Accept", "Authorization", "Content-Type", "X-User-Profile", "X-User-Phone"],
 )
 app.include_router(unidades_router)
 app.include_router(moradores_router)
 app.include_router(entregas_router)
 app.include_router(mapa_router)
 app.include_router(auth_router)
+app.include_router(registration_router)
 app.include_router(me_router)
 app.include_router(acessos_router)
 app.include_router(porteiros_router)

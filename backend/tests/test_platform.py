@@ -9,7 +9,7 @@ def seed_user():
         unidade = Unidade(condominio_id=condominio.id, bloco="A", numero="101", andar=1)
         db.add(unidade)
         db.flush()
-        user = Usuario(condominio_id=condominio.id, nome="Ana Souza", telefone="5511999999999", perfil=PerfilUsuario.MORADOR)
+        user = Usuario(condominio_id=condominio.id, nome="Ana Souza", telefone="5511999999999", email="ana@example.com", perfil=PerfilUsuario.MORADOR)
         db.add(user)
         db.flush()
         db.add(Morador(unidade_id=unidade.id, usuario_id=user.id, nome="Ana Souza", telefone="5511999999999"))
@@ -19,16 +19,16 @@ def seed_user():
 
 def test_otp_temporario_e_me(client):
     condominio_id = seed_user()
-    solicitado = client.post("/api/v1/auth/request-otp", json={"telefone": "+55 (11) 99999-9999", "condominio_id": condominio_id})
+    solicitado = client.post("/api/v1/auth/request-otp", json={"email": "ANA@EXAMPLE.COM", "condominio_id": condominio_id})
     assert solicitado.status_code == 200
     codigo = solicitado.json()["codigo_mock"]
-    login = client.post("/api/v1/auth/verify-otp", json={"telefone": "5511999999999", "condominio_id": condominio_id, "codigo": codigo})
+    login = client.post("/api/v1/auth/verify-otp", json={"email": "ana@example.com", "condominio_id": condominio_id, "codigo": codigo})
     assert login.status_code == 200
     token = login.json()["access_token"]
     perfil = client.get("/api/v1/me", headers={"Authorization": f"Bearer {token}"})
     assert perfil.status_code == 200
     assert perfil.json()["perfil"] == "morador"
-    assert client.post("/api/v1/auth/verify-otp", json={"telefone": "5511999999999", "condominio_id": condominio_id, "codigo": codigo}).status_code == 401
+    assert client.post("/api/v1/auth/verify-otp", json={"email": "ana@example.com", "condominio_id": condominio_id, "codigo": codigo}).status_code == 401
 
 
 def test_rotas_privadas_rejeitam_sem_token():
@@ -66,31 +66,17 @@ def test_cors_para_as_duas_origens_frontend(client):
         assert resposta.headers["access-control-allow-origin"] == origin
 
 
-def test_login_demonstrativo_para_todos_os_perfis(client):
-    for perfil, telefone in (("morador", "5511999999991"), ("portaria", "5511999999992"), ("sindico", "5511999999993")):
-        resposta = client.post(
-            "/api/v1/auth/login",
-            json={"telefone": telefone, "perfil": perfil, "codigo": "123456"},
-        )
-        assert resposta.status_code == 200
-        body = resposta.json()
-        assert body["token_type"] == "bearer"
-        assert body["access_token"]
-        assert body["usuario"]["perfil"] == perfil
+def test_perfis_cadastrados_controlam_acesso(client):
+    from conftest import TestingSession
+    from security import create_access_token
 
-
-def test_portaria_e_sindico_acessam_rotas_administrativas(client):
-    for perfil, telefone in (("portaria", "5511999999994"), ("sindico", "5511999999995")):
-        login = client.post("/api/v1/auth/login", json={"telefone": telefone, "perfil": perfil, "codigo": "123456"})
-        token = login.json()["access_token"]
-        resposta = client.get("/api/v1/unidades", headers={"Authorization": f"Bearer {token}"})
-        assert resposta.status_code == 200
-
-
-def test_morador_recebe_403_em_rota_administrativa(client):
-    login = client.post("/api/v1/auth/login", json={"telefone": "5511999999996", "perfil": "morador", "codigo": "123456"})
-    resposta = client.get("/api/v1/unidades", headers={"Authorization": f"Bearer {login.json()['access_token']}"})
-    assert resposta.status_code == 403
+    for index, (perfil, esperado) in enumerate(((PerfilUsuario.MORADOR, 403), (PerfilUsuario.PORTARIA, 200), (PerfilUsuario.SINDICO, 200))):
+        with TestingSession() as db:
+            user = Usuario(condominio_id=db.query(Condominio).first().id, nome="Cadastrado", telefone=f"55119999999{index:02}", perfil=perfil)
+            db.add(user)
+            db.commit()
+            token = create_access_token(user)
+        assert client.get("/api/v1/unidades", headers={"Authorization": f"Bearer {token}"}).status_code == esperado
 
 
 def test_token_invalido_e_credencial_ausente(client):
@@ -104,9 +90,15 @@ def test_token_invalido_e_credencial_ausente(client):
     assert ausente.status_code == 401
 
 
-def test_headers_de_compatibilidade_em_desenvolvimento(client):
-    resposta = client.get(
-        "/api/v1/unidades",
-        headers={"X-User-Profile": "portaria", "X-User-Phone": "5511999999997"},
-    )
-    assert resposta.status_code == 200
+def test_headers_nao_autenticam_nem_criam_usuario(client):
+    from fastapi.testclient import TestClient
+    from main import app
+    from conftest import TestingSession
+
+    with TestingSession() as db:
+        antes = db.query(Usuario).count()
+    with TestClient(app) as anonymous:
+        resposta = anonymous.get("/api/v1/unidades", headers={"X-User-Profile": "sindico", "X-User-Phone": "5511999999997"})
+    assert resposta.status_code == 401
+    with TestingSession() as db:
+        assert db.query(Usuario).count() == antes

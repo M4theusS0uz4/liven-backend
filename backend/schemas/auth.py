@@ -1,53 +1,30 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from models.orm import PerfilUsuario
-from security import normalize_phone
+from services.email_identity import normalize_email
 
 
 class OtpRequest(BaseModel):
-    telefone: str = Field(min_length=8, max_length=25)
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr = Field(max_length=255)
     condominio_id: int = Field(gt=0)
 
-    @field_validator("telefone")
+    @field_validator("email", mode="before")
     @classmethod
-    def normalizar_telefone(cls, value: str) -> str:
-        return normalize_phone(value)
+    def normalizar_email(cls, value: str) -> str:
+        return normalize_email(value)
 
 
-class DemoLoginRequest(BaseModel):
-    telefone: str = Field(min_length=8, max_length=25)
-    perfil: PerfilUsuario
-    codigo: str = Field(pattern=r"^\d{6}$")
-
-    @field_validator("telefone")
-    @classmethod
-    def normalizar_telefone(cls, value: str) -> str:
-        return normalize_phone(value)
+class OtpRequestResponse(BaseModel):
+    detail: str
+    codigo_mock: str | None = None
 
 
-class DemoUserResponse(BaseModel):
-    telefone: str
-    nome: str
-    perfil: PerfilUsuario
-
-
-class DemoLoginResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    usuario: DemoUserResponse
-
-
-class OtpVerify(BaseModel):
-    telefone: str = Field(min_length=8, max_length=25)
-    condominio_id: int = Field(gt=0)
-    codigo: str = Field(pattern=r"^\d{6}$")
-
-    @field_validator("telefone")
-    @classmethod
-    def normalizar_telefone(cls, value: str) -> str:
-        return normalize_phone(value)
+class OtpVerify(OtpRequest):
+    codigo: str = Field(pattern=r"^[0-9]{6}$")
 
 
 class RefreshRequest(BaseModel):
@@ -59,7 +36,6 @@ class AuthResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int
-    codigo_mock: str | None = None
 
 
 class MeResponse(BaseModel):
@@ -67,6 +43,7 @@ class MeResponse(BaseModel):
     condominio_id: int
     nome: str
     telefone: str
+    email: EmailStr | None = None
     perfil: PerfilUsuario
     ativo: bool
     unidade_id: int | None = None
