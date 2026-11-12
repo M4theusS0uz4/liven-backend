@@ -22,9 +22,9 @@ def test_new_registration_actually_calls_smtp_and_records_acceptance(client, mon
     assert result.status_code == 200 and 'codigo_mock' not in result.json()
     server.login.assert_called_once()
     server.send_message.assert_called_once()
-    assert 'outcome=delivery_started provider=SmtpOtpDelivery' in caplog.text
+    assert 'outcome=delivery_started' in caplog.text and 'provider=SmtpOtpDelivery' in caplog.text
     assert 'otp_smtp outcome=accepted' in caplog.text
-    assert 'outcome=challenge_committed' in caplog.text
+    assert 'outcome=challenge_prepared' in caplog.text and 'outcome=delivery_accepted' in caplog.text
     with TestingSession() as db:
         pending = db.get(OtpCadastro, EMAIL)
         assert verify_secret('cadastro:603219', pending.code_hash)
@@ -80,7 +80,7 @@ def test_cooldown_and_persistent_limit_do_not_claim_delivery(client, monkeypatch
     ('connect', TimeoutError('PRIVATE-SMTP-REPLY'), 'connect'),
     ('starttls', smtplib.SMTPNotSupportedError('PRIVATE-SMTP-REPLY'), 'starttls'),
     ('login', smtplib.SMTPAuthenticationError(535, b'PRIVATE-SMTP-REPLY'), 'auth'),
-    ('send_message', smtplib.SMTPServerDisconnected('PRIVATE-SMTP-REPLY'), 'send'),
+    ('send_message', smtplib.SMTPDataError(550, b'PRIVATE-SMTP-REPLY'), 'send'),
 ])
 def test_smtp_failure_is_diagnosable_without_public_account_enumeration(client, monkeypatch, caplog, stage, error, logged_stage):
     configure(monkeypatch)
@@ -91,15 +91,15 @@ def test_smtp_failure_is_diagnosable_without_public_account_enumeration(client, 
         response = request(client)
     assert response.status_code == 200 and 'codigo_mock' not in response.json()
     assert f'outcome=failed stage={logged_stage}' in caplog.text
-    assert 'outcome=delivery_failed provider=SmtpOtpDelivery' in caplog.text
-    assert 'outcome=challenge_committed' not in caplog.text and 'outcome=accepted' not in caplog.text
+    assert 'outcome=delivery_failed' in caplog.text and 'provider=SmtpOtpDelivery' in caplog.text
+    assert 'outcome=delivery_accepted' not in caplog.text and 'otp_smtp outcome=accepted' not in caplog.text
     if stage == 'login': assert 'smtp_status=535' in caplog.text
     for sensitive in ('PRIVATE-SMTP-REPLY', EMAIL, PASSWORD, 'fake-test-app-password'):
         assert sensitive not in caplog.text and sensitive not in response.text
     with TestingSession() as db:
         pending = db.get(OtpCadastro, EMAIL)
-        assert pending.code_hash is None and pending.password_hash is None
-        assert pending.requests == 1 and db.query(ContaGlobal).count() == 0
+        assert pending.code_hash is None and verify_password(PASSWORD, pending.password_hash)
+        assert pending.requests == 0 and pending.last_requested_at is None and db.query(ContaGlobal).count() == 0
 
 
 def test_expired_pending_resend_calls_smtp_without_replacing_password(client, monkeypatch):

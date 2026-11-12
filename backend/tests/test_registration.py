@@ -168,7 +168,7 @@ def test_rate_limit_por_email_e_ip(client):
     assert request(client, "last@example.com").status_code == 429
 
 
-def test_falha_entrega_preserva_anterior_e_contabiliza_limite(client, monkeypatch, caplog):
+def test_falha_entrega_preserva_anterior_sem_consumir_limite_de_envio(client, monkeypatch, caplog):
     code = request(client).json()["codigo_mock"]
     class Broken:
         def deliver(self, **kwargs): raise OtpDeliveryError("PRIVATE")
@@ -178,7 +178,7 @@ def test_falha_entrega_preserva_anterior_e_contabiliza_limite(client, monkeypatc
     assert "PRIVATE" not in caplog.text and code not in caplog.text
     with TestingSession() as db:
         otp = db.get(OtpCadastro, EMAIL)
-        assert otp.requests == 2 and verify_secret("cadastro:" + code, otp.code_hash)
+        assert otp.requests == 1 and verify_secret("cadastro:" + code, otp.code_hash)
         assert db.query(ContaGlobal).count() == 0
     assert verify(client, code).status_code == 201
 

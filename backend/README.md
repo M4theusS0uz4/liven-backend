@@ -84,3 +84,5 @@ Cadastro com e-mail, senha e confirmação OTP; login normal por e-mail e senha.
 Sem dados fictícios ou vínculo automático de condomínio. Veja [contratos, migration e transição de contas antigas](docs/PASSWORD_AUTH.md).
 O login recupera perfis já autorizados e mantém a seleção explícita quando há vários
 condomínios. Veja [integração com usuários e permissões](docs/AUTHORIZATION.md).
+
+Recuperação após falha SMTP, limites e reinício sem migrations automáticas: [guia de operação OTP](OTP_RECOVERY.md).

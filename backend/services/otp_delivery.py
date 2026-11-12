@@ -21,6 +21,10 @@ class OtpDeliveryError(Exception):
     """Falha sanitizada: nunca incluir resposta do SDK, código ou credenciais."""
 
 
+class OtpDeliveryIndeterminate(OtpDeliveryError):
+    """The provider may have accepted DATA; preserve the durable challenge."""
+
+
 class OtpDelivery(Protocol):
     def deliver(self, *, email: str, codigo: str) -> str | None: ...
 
@@ -107,6 +111,16 @@ class SmtpOtpDelivery:
             smtp_status = getattr(exc, "smtp_code", None)
             if not isinstance(smtp_status, int) or isinstance(smtp_status, bool) or not 100 <= smtp_status <= 599:
                 smtp_status = None
+            if stage == "quit":
+                # send_message already confirmed acceptance. A failed QUIT
+                # cannot undo it and must not invalidate the persisted OTP.
+                logger.warning("otp_smtp outcome=accepted stage=quit reason=cleanup_failed error=%s smtp_status=%s",
+                               type(exc).__name__, smtp_status)
+                return None
+            if stage == "send" and not isinstance(exc, (smtplib.SMTPResponseException, smtplib.SMTPRecipientsRefused)):
+                logger.warning("otp_smtp outcome=indeterminate stage=send error=%s smtp_status=%s",
+                               type(exc).__name__, smtp_status)
+                raise OtpDeliveryIndeterminate("Entrega indisponível.") from None
             logger.warning("otp_smtp outcome=failed stage=%s error=%s smtp_status=%s",
                            stage, type(exc).__name__, smtp_status)
             raise OtpDeliveryError("Entrega indisponível.") from None

@@ -75,20 +75,34 @@ def create_access_token(user: Usuario, session_id: int | None = None) -> str:
 
 class RateLimiter:
     def __init__(self) -> None:
-        self._events: dict[str, deque[datetime]] = defaultdict(deque)
+        self._events: dict[str, deque[tuple[datetime, object]]] = defaultdict(deque)
         self._lock = threading.Lock()
 
     def allow(self, key: str, limit: int, window_seconds: int) -> bool:
+        return self.reserve(key, limit, window_seconds) is not None
+
+    def reserve(self, key: str, limit: int, window_seconds: int) -> object | None:
+        """Return a refundable reservation for this exact request."""
         now = utcnow()
         cutoff = now - timedelta(seconds=window_seconds)
         with self._lock:
             events = self._events[key]
-            while events and events[0] <= cutoff:
+            while events and events[0][0] <= cutoff:
                 events.popleft()
             if len(events) >= limit:
-                return False
-            events.append(now)
-            return True
+                return None
+            reservation = object()
+            events.append((now, reservation))
+            return reservation
+
+    def refund(self, key: str, reservation: object) -> None:
+        with self._lock:
+            events = self._events.get(key)
+            if events is not None:
+                for index, (_, candidate) in enumerate(events):
+                    if candidate is reservation:
+                        del events[index]
+                        break  # Identity makes refunds idempotent even at equal timestamps.
 
 
 otp_rate_limiter = RateLimiter()

@@ -1,0 +1,5 @@
+# Override operacional: reinicia a API sem executar migrations automaticamente.
+# Usar com: docker compose -f docker-compose.yml -f docker-compose.no-migrations.yml up -d --no-deps --force-recreate backend
+services:
+  backend:
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
