@@ -60,7 +60,7 @@ def reset_database(monkeypatch) -> Generator[None, None, None]:
         db.add(condominio)
         db.flush()
         db.add(Usuario(condominio_id=condominio.id, nome="Síndico de teste", telefone="5511999999998", perfil=PerfilUsuario.SINDICO))
-        db.add(Mapa(nome="Teste", largura=1, altura=1))
+        db.add(Mapa(condominio_id=condominio.id, nome="Teste", largura=1, altura=1))
         db.commit()
     yield
     Base.metadata.drop_all(engine)

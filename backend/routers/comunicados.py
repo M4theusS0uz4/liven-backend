@@ -81,7 +81,10 @@ def arquivar_comunicado(comunicado_id: int, db: DbSession, user: Sindico) -> Com
 
 @router.post("/{comunicado_id}/ler", response_model=ComunicadoRead)
 def ler_comunicado(comunicado_id: int, db: DbSession, user: CurrentUser) -> ComunicadoRead:
-    comunicado = db.scalar(select(Comunicado).where(Comunicado.id == comunicado_id, Comunicado.condominio_id == user.condominio_id))
+    comunicado = db.scalar(select(Comunicado).where(
+        Comunicado.id == comunicado_id, Comunicado.condominio_id == user.condominio_id,
+        Comunicado.publicado.is_(True), Comunicado.arquivado.is_(False),
+    ).with_for_update())
     if comunicado is None or not _aplicavel(comunicado, user, db):
         raise HTTPException(status_code=404, detail="Comunicado não encontrado.")
     leitura = db.scalar(select(ComunicadoLeitura).where(ComunicadoLeitura.comunicado_id == comunicado_id, ComunicadoLeitura.usuario_id == user.id))

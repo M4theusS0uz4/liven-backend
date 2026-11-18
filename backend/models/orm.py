@@ -373,8 +373,10 @@ class OcorrenciaComentario(Base):
 
 class Mapa(Base):
     __tablename__ = "mapas"
+    __table_args__ = (UniqueConstraint("condominio_id", name="uq_mapas_condominio"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    condominio_id: Mapped[int | None] = mapped_column(ForeignKey("condominios.id", ondelete="CASCADE", name="fk_mapas_condominio"))
     nome: Mapped[str] = mapped_column(String(150))
     tipo_condominio: Mapped[str] = mapped_column(String(20), default="vertical", server_default="vertical")
     largura: Mapped[float] = mapped_column(Float, default=100.0, server_default="100")
@@ -398,6 +400,7 @@ class MapaUnidade(Base):
     largura: Mapped[float] = mapped_column(Float)
     altura: Mapped[float] = mapped_column(Float)
     rotacao: Mapped[float] = mapped_column(Float, default=0, server_default="0")
+    oculta: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     mapa: Mapped[Mapa] = relationship(back_populates="unidades")
     unidade: Mapped[Unidade] = relationship()
 
@@ -413,6 +416,7 @@ class MapaBloco(Base):
     largura: Mapped[float] = mapped_column(Float)
     altura: Mapped[float] = mapped_column(Float)
     andares: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    rotacao: Mapped[float] = mapped_column(Float, default=0, server_default="0")
     mapa: Mapped[Mapa] = relationship(back_populates="blocos")
 
 
@@ -449,6 +453,7 @@ class MapaAreaComum(Base):
     y: Mapped[float] = mapped_column(Float)
     largura: Mapped[float] = mapped_column(Float)
     altura: Mapped[float] = mapped_column(Float)
+    rotacao: Mapped[float] = mapped_column(Float, default=0, server_default="0")
     mapa: Mapped[Mapa] = relationship(back_populates="areas_comuns")
 
 
@@ -460,6 +465,7 @@ class MapaPortaria(Base):
     nome: Mapped[str] = mapped_column(String(150))
     x: Mapped[float] = mapped_column(Float)
     y: Mapped[float] = mapped_column(Float)
+    rotacao: Mapped[float] = mapped_column(Float, default=0, server_default="0")
     mapa: Mapped[Mapa] = relationship(back_populates="portarias")
 
 
