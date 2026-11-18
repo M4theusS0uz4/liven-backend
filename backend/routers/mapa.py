@@ -38,6 +38,7 @@ def serializar_mapa(mapa: Mapa, db: Session) -> dict:
     return {
         "id": mapa.id,
         "nome": mapa.nome,
+        "tipo_condominio": mapa.tipo_condominio,
         "largura": mapa.largura,
         "altura": mapa.altura,
         "unidades": [
@@ -46,6 +47,7 @@ def serializar_mapa(mapa: Mapa, db: Session) -> dict:
                 "unidade_id": item.unidade_id,
                 "bloco": item.unidade.bloco,
                 "numero": item.unidade.numero,
+                "tipo_residencia": item.unidade.tipo_residencia,
                 "x": item.x,
                 "y": item.y,
                 "largura": item.largura,
@@ -84,6 +86,7 @@ def cadastrar_posicao(dados: MapaUnidadeCreate, db: DbSession) -> dict:
         "id": item.id,
         "bloco": item.unidade.bloco,
         "numero": item.unidade.numero,
+        "tipo_residencia": item.unidade.tipo_residencia,
         "status": "vazia",
     }
 
@@ -100,7 +103,7 @@ def atualizar_posicao(posicao_id: int, dados: MapaUnidadeUpdate, db: DbSession) 
     db.refresh(item)
     unidade = db.get(Unidade, item.unidade_id)
     ocupado = db.scalar(select(Morador.id).where(Morador.unidade_id == item.unidade_id, Morador.ativo.is_(True)).limit(1)) is not None
-    return {**dados.model_dump(), "id": item.id, "unidade_id": item.unidade_id, "bloco": unidade.bloco, "numero": unidade.numero, "status": "ocupada" if ocupado else "vazia"}
+    return {**dados.model_dump(), "id": item.id, "unidade_id": item.unidade_id, "bloco": unidade.bloco, "numero": unidade.numero, "tipo_residencia": unidade.tipo_residencia, "status": "ocupada" if ocupado else "vazia"}
 
 
 @router.delete("/mapa/unidades/{posicao_id}", status_code=204)

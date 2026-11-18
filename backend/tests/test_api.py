@@ -83,18 +83,22 @@ def test_mapa_persistido_sem_dados_sensiveis_e_posicoes(client):
     unidade = criar_unidade(client, "B", "201")
     mapa = client.get("/api/v1/condominio/mapa")
     assert mapa.status_code == 200
+    assert mapa.json()["tipo_condominio"] == "vertical"
     assert mapa.json()["unidades"] == []
     posicao = client.post(
         "/api/v1/condominio/mapa/unidades",
         json={"unidade_id": unidade["id"], "x": 0.1, "y": 0.2, "largura": 0.1, "altura": 0.1, "rotacao": 0},
     )
     assert posicao.status_code == 201
+    assert posicao.json()["tipo_residencia"] == "apartamento"
     assert "nome" not in posicao.json()
     mapa = client.get("/api/v1/condominio/mapa").json()
+    assert mapa["unidades"][0]["tipo_residencia"] == "apartamento"
     assert mapa["unidades"][0]["status"] == "vazia"
     morador = criar_morador(client, unidade["id"])
     assert client.get("/api/v1/condominio/mapa").json()["unidades"][0]["status"] == "ocupada"
     assert "email" not in client.get("/api/v1/condominio/mapa").text
     atualizado = client.patch(f"/api/v1/condominio/mapa/unidades/{posicao.json()['id']}", json={"x": 0.3, "y": 0.4, "largura": 0.1, "altura": 0.1, "rotacao": 15})
     assert atualizado.status_code == 200
+    assert atualizado.json()["tipo_residencia"] == "apartamento"
     assert morador["id"] > 0
