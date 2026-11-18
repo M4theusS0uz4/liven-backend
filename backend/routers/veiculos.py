@@ -9,6 +9,8 @@ from config.database import get_db
 from models.orm import Morador, PerfilUsuario, Usuario, Veiculo
 from schemas.veiculo import VeiculoCreate, VeiculoRead
 from security import get_current_user
+from services.fotos import responder_foto
+
 
 router = APIRouter(prefix="/api/v1/veiculos", tags=["Veículos"])
 DbSession = Annotated[Session, Depends(get_db)]
@@ -32,7 +34,7 @@ def criar_veiculo(dados: VeiculoCreate, db: DbSession, user: CurrentUser) -> Vei
         morador_id = db.scalar(select(Morador.id).where(Morador.usuario_id == user.id))
     if morador_id is not None and db.scalar(select(Morador.id).where(Morador.id == morador_id, Morador.unidade.has(condominio_id=user.condominio_id))) is None:
         raise HTTPException(status_code=403, detail="Acesso não autorizado.")
-    veiculo = Veiculo(condominio_id=user.condominio_id, morador_id=morador_id, **dados.model_dump(exclude={"morador_id"}))
+    veiculo = Veiculo(condominio_id=user.condominio_id, morador_id=morador_id, **dados.model_dump(exclude={"morador_id", "foto"}), **dados.dados_foto())
     db.add(veiculo)
     try:
         db.commit()
@@ -48,9 +50,20 @@ def atualizar_veiculo(veiculo_id: int, dados: VeiculoCreate, db: DbSession, user
     veiculo = db.scalar(_query(user).where(Veiculo.id == veiculo_id))
     if veiculo is None:
         raise HTTPException(status_code=404, detail="Veículo não encontrado.")
-    for campo, valor in dados.model_dump().items():
+    alteracoes = dados.model_dump(exclude={"foto", "morador_id"})
+    if "morador_id" in dados.model_fields_set and user.perfil != PerfilUsuario.MORADOR:
+        if dados.morador_id is not None and db.scalar(select(Morador.id).where(
+            Morador.id == dados.morador_id, Morador.unidade.has(condominio_id=user.condominio_id)
+        )) is None:
+            raise HTTPException(status_code=403, detail="Acesso não autorizado.")
+        alteracoes["morador_id"] = dados.morador_id
+    for campo, valor in (alteracoes | dados.dados_foto()).items():
         setattr(veiculo, campo, valor)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A placa já está cadastrada.") from exc
     db.refresh(veiculo)
     return veiculo
 
@@ -62,3 +75,10 @@ def excluir_veiculo(veiculo_id: int, db: DbSession, user: CurrentUser) -> None:
         raise HTTPException(status_code=404, detail="Veículo não encontrado.")
     veiculo.ativo = False
     db.commit()
+
+@router.get("/{veiculo_id}/foto")
+def consultar_foto_veiculo(veiculo_id: int, db: DbSession, user: CurrentUser) -> dict[str, str]:
+    veiculo = db.scalar(_query(user).where(Veiculo.id == veiculo_id))
+    if veiculo is None:
+        raise HTTPException(status_code=404, detail="Veículo não encontrado.")
+    return responder_foto(veiculo.foto_jpeg)

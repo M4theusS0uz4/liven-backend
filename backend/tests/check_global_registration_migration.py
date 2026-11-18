@@ -24,15 +24,17 @@ def main():
     cfg = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     command.upgrade(cfg, "20261110_0008")
     from config.database import SessionLocal
-    from models.orm import Condominio, ContaGlobal, Morador, Unidade, Usuario
+    from models.orm import Condominio, Unidade, Usuario
     with SessionLocal.begin() as db:
         condo = db.query(Condominio).first()
         unit = Unidade(condominio_id=condo.id, bloco="MIGRATION", numero="1")
         user = Usuario(condominio_id=condo.id, telefone="5511999999999", nome="Legacy test", email="legacy@example.com", perfil="morador", ativo=True)
         db.add_all([unit, user])
         db.flush()
-        resident = Morador(unidade_id=unit.id, usuario_id=user.id, nome="Legacy test", email=user.email)
-        db.add(resident)
+        db.execute(
+            text("INSERT INTO moradores (unidade_id, usuario_id, nome, email) VALUES (:unidade, :usuario, :nome, :email)"),
+            {"unidade": unit.id, "usuario": user.id, "nome": user.nome, "email": user.email},
+        )
         unit_id = unit.id
     with engine.connect() as c:
         before = c.execute(text("SELECT u.id,u.condominio_id,u.telefone,u.nome,u.email,u.perfil,u.ativo,m.id,m.unidade_id FROM usuarios u JOIN moradores m ON m.usuario_id=u.id")).all()
@@ -51,6 +53,9 @@ def main():
         for table, columns in old_columns.items():
             now = inspect(engine).get_columns(table)
             assert [(v["name"],str(v["type"]),v["nullable"]) for v in columns] == [(v["name"],str(v["type"]),v["nullable"]) for v in now]
+    command.upgrade(cfg, "head")
+    with engine.connect() as c:
+        assert c.scalar(text("SELECT count(*) FROM moradores WHERE unidade_id = :unidade AND foto_jpeg IS NULL"), {"unidade": unit_id}) == 1
     # Testa o fluxo HTTP sobre o schema migrado, sem entrega externa.
     from fastapi.testclient import TestClient
     from main import app

@@ -1,8 +1,8 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import CheckConstraint, Boolean, DateTime, Enum, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint, func
+from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 
 from config.database import Base
 
@@ -155,6 +155,8 @@ class Morador(Base):
     __tablename__ = "moradores"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    foto_jpeg: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    tem_foto: Mapped[bool] = column_property(foto_jpeg.is_not(None))
     usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"), unique=True, index=True)
     unidade_id: Mapped[int] = mapped_column(ForeignKey("unidades.id", ondelete="RESTRICT"), index=True)
     nome: Mapped[str] = mapped_column(String(150))
@@ -212,6 +214,8 @@ class Porteiro(Base):
     __tablename__ = "porteiros"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    foto_jpeg: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    tem_foto: Mapped[bool] = column_property(foto_jpeg.is_not(None))
     usuario_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id", ondelete="CASCADE"), unique=True, index=True)
     ativo: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     turno: Mapped[str] = mapped_column(String(40), default="Manhã", server_default="Manhã")
@@ -223,6 +227,8 @@ class Visitante(Base):
     __tablename__ = "visitantes"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    foto_jpeg: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    tem_foto: Mapped[bool] = column_property(foto_jpeg.is_not(None))
     condominio_id: Mapped[int] = mapped_column(ForeignKey("condominios.id", ondelete="CASCADE"), index=True)
     nome: Mapped[str] = mapped_column(String(150))
     telefone: Mapped[str | None] = mapped_column(String(25))
@@ -238,6 +244,8 @@ class Veiculo(Base):
     __table_args__ = (UniqueConstraint("condominio_id", "placa", name="uq_veiculos_condominio_placa"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    foto_jpeg: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    tem_foto: Mapped[bool] = column_property(foto_jpeg.is_not(None))
     condominio_id: Mapped[int] = mapped_column(ForeignKey("condominios.id", ondelete="CASCADE"), index=True)
     morador_id: Mapped[int | None] = mapped_column(ForeignKey("moradores.id", ondelete="SET NULL"), index=True)
     placa: Mapped[str] = mapped_column(String(10))

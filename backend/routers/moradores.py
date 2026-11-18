@@ -9,6 +9,8 @@ from config.database import get_db
 from models.orm import Morador, PerfilUsuario, Unidade, Usuario
 from schemas.morador import MoradorCreate, MoradorRead, MoradorUpdate
 from security import get_current_user, require_profiles
+from services.fotos import responder_foto
+
 
 router = APIRouter(prefix="/api/v1/moradores", tags=["Moradores"], dependencies=[Depends(require_profiles(PerfilUsuario.PORTARIA, PerfilUsuario.SINDICO))])
 DbSession = Annotated[Session, Depends(get_db)]
@@ -62,7 +64,7 @@ def consultar_morador(morador_id: int, db: DbSession, user: CurrentUser) -> Mora
 @router.post("", response_model=MoradorRead, status_code=status.HTTP_201_CREATED)
 def criar_morador(dados: MoradorCreate, db: DbSession, user: CurrentUser) -> Morador:
     garantir_unidade_existente(dados.unidade_id, db, user.condominio_id)
-    morador = Morador(**dados.model_dump())
+    morador = Morador(**dados.model_dump(exclude={"foto"}), **dados.dados_foto())
     db.add(morador)
     confirmar_alteracao(db)
     db.refresh(morador)
@@ -73,7 +75,10 @@ def criar_morador(dados: MoradorCreate, db: DbSession, user: CurrentUser) -> Mor
 def atualizar_morador(morador_id: int, dados: MoradorUpdate, db: DbSession, user: CurrentUser) -> Morador:
     morador = buscar_morador_ou_404(morador_id, db, user.condominio_id)
     garantir_unidade_existente(dados.unidade_id, db, user.condominio_id)
-    for campo, valor in dados.model_dump().items():
+    excluidos = {"foto"}
+    if "foto_facial_path" not in dados.model_fields_set:
+        excluidos.add("foto_facial_path")
+    for campo, valor in (dados.model_dump(exclude=excluidos) | dados.dados_foto()).items():
         setattr(morador, campo, valor)
     confirmar_alteracao(db)
     db.refresh(morador)
@@ -93,3 +98,8 @@ def excluir_morador(morador_id: int, db: DbSession, user: CurrentUser) -> Respon
             detail="Não é possível excluir um morador vinculado a entregas.",
         ) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@router.get("/{morador_id}/foto")
+def consultar_foto_morador(morador_id: int, db: DbSession, user: CurrentUser) -> dict[str, str]:
+    morador = buscar_morador_ou_404(morador_id, db, user.condominio_id)
+    return responder_foto(morador.foto_jpeg)

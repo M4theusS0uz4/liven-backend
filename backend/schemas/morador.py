@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from services.fotos import FotoInput
 
 
 class MoradorBase(BaseModel):
@@ -39,15 +40,16 @@ class MoradorBase(BaseModel):
         return value or None
 
 
-class MoradorCreate(MoradorBase):
+class MoradorCreate(MoradorBase, FotoInput):
     """Dados necessários para cadastrar um morador."""
 
 
-class MoradorUpdate(MoradorBase):
+class MoradorUpdate(MoradorBase, FotoInput):
     """Dados completos para atualizar um morador."""
 
 
 class MoradorRead(MoradorBase):
+    tem_foto: bool = False
     id: int
     created_at: datetime
 

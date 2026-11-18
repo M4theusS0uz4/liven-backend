@@ -9,6 +9,8 @@ from config.database import get_db
 from models.orm import Acesso, AutorizacaoAcesso, Morador, PerfilUsuario, QrCode, StatusAutorizacao, Usuario, Visitante
 from schemas.plataforma import AcessoCreate, AcessoHistoricoRead, AcessoRead, FacialValidation, QrValidation, VisitanteCreate, VisitanteRead, VisitanteUpdate
 from security import as_utc, get_current_user, hash_token, require_profiles, utcnow
+from services.fotos import responder_foto
+
 
 router = APIRouter(tags=["Visitantes e acessos"])
 DbSession = Annotated[Session, Depends(get_db)]
@@ -40,7 +42,7 @@ def listar_visitantes(db: DbSession, user: CurrentUser) -> list[Visitante]:
 
 @router.post("/api/v1/visitantes", response_model=VisitanteRead, status_code=status.HTTP_201_CREATED)
 def criar_visitante(dados: VisitanteCreate, db: DbSession, user: CurrentUser) -> Visitante:
-    visitante = Visitante(condominio_id=user.condominio_id, criado_por_id=user.id, **dados.model_dump())
+    visitante = Visitante(condominio_id=user.condominio_id, criado_por_id=user.id, **dados.model_dump(exclude={"foto"}), **dados.dados_foto())
     db.add(visitante)
     db.commit()
     db.refresh(visitante)
@@ -50,15 +52,19 @@ def criar_visitante(dados: VisitanteCreate, db: DbSession, user: CurrentUser) ->
 @router.get("/api/v1/visitantes/{visitante_id}", response_model=VisitanteRead)
 def consultar_visitante(visitante_id: int, db: DbSession, user: CurrentUser) -> Visitante:
     visitante = _visitante(visitante_id, db, user)
-    if user.perfil == PerfilUsuario.MORADOR and not db.scalar(select(AutorizacaoAcesso.id).where(AutorizacaoAcesso.visitante_id == visitante_id, AutorizacaoAcesso.morador_id == _morador_do_usuario(db, user).id)):
-        raise HTTPException(status_code=404, detail="Visitante não encontrado.")
+    if user.perfil == PerfilUsuario.MORADOR:
+        morador = _morador_do_usuario(db, user)
+        if morador is None or not db.scalar(select(AutorizacaoAcesso.id).where(
+            AutorizacaoAcesso.visitante_id == visitante_id, AutorizacaoAcesso.morador_id == morador.id
+        )):
+            raise HTTPException(status_code=404, detail="Visitante não encontrado.")
     return visitante
 
 
 @router.put("/api/v1/visitantes/{visitante_id}", response_model=VisitanteRead)
 def atualizar_visitante(visitante_id: int, dados: VisitanteUpdate, db: DbSession, user: CurrentUser) -> Visitante:
     visitante = consultar_visitante(visitante_id, db, user)
-    for campo, valor in dados.model_dump().items():
+    for campo, valor in (dados.model_dump(exclude={"foto"}) | dados.dados_foto()).items():
         setattr(visitante, campo, valor)
     db.commit()
     db.refresh(visitante)
@@ -153,3 +159,8 @@ def validar_facial(_dados: FacialValidation, _user: Staff) -> dict:
 @router.get("/api/v1/acessos/historico", response_model=list[AcessoHistoricoRead])
 def historico_acessos(db: DbSession, user: Staff) -> list[Acesso]:
     return list(db.scalars(select(Acesso).where(Acesso.condominio_id == user.condominio_id).order_by(desc(Acesso.ocorrido_em)).limit(200)).all())
+
+@router.get("/api/v1/visitantes/{visitante_id}/foto")
+def consultar_foto_visitante(visitante_id: int, db: DbSession, user: CurrentUser) -> dict[str, str]:
+    visitante = consultar_visitante(visitante_id, db, user)
+    return responder_foto(visitante.foto_jpeg)

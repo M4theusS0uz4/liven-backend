@@ -11,3 +11,4 @@ opencv-python-headless
 numpy
 python-multipart
 pyjwt
+pillow>=11.3

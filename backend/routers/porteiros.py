@@ -9,6 +9,8 @@ from config.database import get_db
 from models.orm import PerfilUsuario, Porteiro, Usuario
 from schemas.plataforma import PorteiroCreate, PorteiroRead, PorteiroUpdate, StatusPorteiroUpdate
 from security import normalize_phone, require_profiles
+from services.fotos import responder_foto
+
 
 router = APIRouter(prefix="/api/v1/porteiros", tags=["Porteiros"])
 DbSession = Annotated[Session, Depends(get_db)]
@@ -24,6 +26,8 @@ def _read(porteiro: Porteiro) -> PorteiroRead:
         telefone=porteiro.usuario.telefone,
         ativo=porteiro.ativo and porteiro.usuario.ativo,
         created_at=porteiro.created_at,
+        turno=porteiro.turno,
+        tem_foto=porteiro.tem_foto,
     )
 
 
@@ -40,9 +44,7 @@ def criar_porteiro(dados: PorteiroCreate, db: DbSession, user: Sindico) -> Porte
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Dados inválidos.") from exc
     usuario = Usuario(condominio_id=user.condominio_id, telefone=telefone, nome=dados.nome.strip(), perfil=PerfilUsuario.PORTARIA)
-    db.add(usuario)
-    db.flush()
-    porteiro = Porteiro(usuario_id=usuario.id)
+    porteiro = Porteiro(usuario=usuario, turno=dados.turno, **dados.dados_foto())
     db.add(porteiro)
     try:
         db.commit()
@@ -73,6 +75,10 @@ def atualizar_porteiro(porteiro_id: int, dados: PorteiroUpdate, db: DbSession, u
             porteiro.usuario.telefone = normalize_phone(dados.telefone)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail="Dados inválidos.") from exc
+    if dados.turno is not None:
+        porteiro.turno = dados.turno
+    for campo, valor in dados.dados_foto().items():
+        setattr(porteiro, campo, valor)
     try:
         db.commit()
     except IntegrityError as exc:
@@ -92,3 +98,10 @@ def atualizar_status(porteiro_id: int, dados: StatusPorteiroUpdate, db: DbSessio
     db.commit()
     db.refresh(porteiro)
     return _read(porteiro)
+
+@router.get("/{porteiro_id}/foto")
+def consultar_foto_porteiro(porteiro_id: int, db: DbSession, user: Staff) -> dict[str, str]:
+    porteiro = db.scalar(select(Porteiro).join(Porteiro.usuario).where(Porteiro.id == porteiro_id, Usuario.condominio_id == user.condominio_id))
+    if porteiro is None:
+        raise HTTPException(status_code=404, detail="Porteiro não encontrado.")
+    return responder_foto(porteiro.foto_jpeg)

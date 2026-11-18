@@ -1,9 +1,10 @@
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from services.fotos import FotoInput
 
 
-class VeiculoCreate(BaseModel):
+class VeiculoBase(BaseModel):
     placa: str = Field(min_length=5, max_length=10)
     modelo: str = Field(min_length=2, max_length=100)
     cor: str | None = Field(default=None, max_length=50)
@@ -15,7 +16,12 @@ class VeiculoCreate(BaseModel):
         return value.strip().upper().replace("-", "")
 
 
-class VeiculoRead(VeiculoCreate):
+class VeiculoCreate(VeiculoBase, FotoInput):
+    pass
+
+
+class VeiculoRead(VeiculoBase):
+    tem_foto: bool = False
     id: int
     condominio_id: int
     ativo: bool

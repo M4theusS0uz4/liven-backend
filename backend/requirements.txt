@@ -14,3 +14,4 @@ python-multipart
 pyjwt
 pytest
 httpx
+pillow>=11.3

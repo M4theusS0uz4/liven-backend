@@ -3,19 +3,24 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from models.orm import CategoriaOcorrencia, PerfilUsuario, PrioridadeOcorrencia, PublicoComunicado, StatusAutorizacao, StatusOcorrencia
+from services.fotos import FotoInput
 
 
-class PorteiroCreate(BaseModel):
+class PorteiroCreate(FotoInput):
     nome: str = Field(min_length=2, max_length=150)
     telefone: str = Field(min_length=8, max_length=25)
+    turno: str = Field(default="Manhã", min_length=1, max_length=40)
 
 
-class PorteiroUpdate(BaseModel):
+class PorteiroUpdate(FotoInput):
     nome: str | None = Field(default=None, min_length=2, max_length=150)
     telefone: str | None = Field(default=None, min_length=8, max_length=25)
+    turno: str | None = Field(default=None, min_length=1, max_length=40)
 
 
 class PorteiroRead(BaseModel):
+    tem_foto: bool = False
+    turno: str = "Manhã"
     id: int
     usuario_id: int
     nome: str
@@ -28,7 +33,7 @@ class StatusPorteiroUpdate(BaseModel):
     ativo: bool
 
 
-class VisitanteCreate(BaseModel):
+class VisitanteBase(BaseModel):
     nome: str = Field(min_length=2, max_length=150)
     telefone: str | None = Field(default=None, max_length=25)
     documento: str | None = Field(default=None, max_length=32)
@@ -39,11 +44,16 @@ class VisitanteCreate(BaseModel):
         return value.strip()
 
 
+class VisitanteCreate(VisitanteBase, FotoInput):
+    pass
+
+
 class VisitanteUpdate(VisitanteCreate):
     ativo: bool = True
 
 
-class VisitanteRead(VisitanteCreate):
+class VisitanteRead(VisitanteBase):
+    tem_foto: bool = False
     id: int
     condominio_id: int
     ativo: bool
